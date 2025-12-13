@@ -1,6 +1,9 @@
 @echo off
 chcp 65001 > nul
 
+echo Copyright Notice
+echo © 2025 Yoyo-ace1110. All Rights Reserved.
+
 :: 讀取使用者輸入作為提交訊息
 set /p commit_msg="請輸入提交訊息 (Commit Message): "
 
@@ -16,24 +19,24 @@ echo [1/3] 執行 git add . (暫存所有變更)
 git add .
 if errorlevel 1 (
     echo.
-    echo ❌ 錯誤: git add 失敗
+    echo ❌ 錯誤: git add 失敗。請檢查專案狀態。
     goto :eof
 )
 echo.
 
 :: 執行 git commit -m
 echo [2/3] 執行 git commit
-:: 檢查訊息是否為空
+:: 檢查提交訊息是否為空
 if "%commit_msg%"=="" (
     echo.
-    echo ⚠️ 警告: 使用預設訊息 "Auto commit"
+    echo ⚠️ 警告: 提交訊息為空，使用預設訊息 "Auto commit"
     set commit_msg=Auto commit
 )
 
 :: 執行提交
 git commit -m "%commit_msg%"
 
-:: 處理 Git commit 在沒有變更時返回代碼的狀況
+:: Git commit 在沒有變更時會返回非零代碼，這不是真正的錯誤，需要特別處理
 if errorlevel 1 (
     git status | findstr /i "nothing to commit"
     if not errorlevel 1 (
