@@ -1,5 +1,3 @@
-# add the file here
-
 from random import randint
 from enum import Enum
 
