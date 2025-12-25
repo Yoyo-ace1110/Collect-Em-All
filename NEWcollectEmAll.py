@@ -9,6 +9,8 @@ color=((255, 0, 29), (77, 186, 48), (82, 130, 246), (249, 140, 41), (150, 43, 23
 
 grid=[[randint(0, 4) for _ in range(6)] for __ in range(6)]
 used=[[False]*6 for _ in range(6)]
+pathGrid=[[False]*6 for _ in range(6)]
+scr=0
 
 #跟螢幕上位置有關的變數
 TopLeft=(724, 370) #左上方的位置
@@ -39,16 +41,17 @@ def followPath(path): #滑鼠輸入寫這，path是存放連線位置的list
 
 #新寫的程式
 def findPath(row, column, color, path=None): #尋找這個點能找到的最長連線
-    global used
+    global used, pathGrid
 
     allDir=((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
 
     if(path is None): path=[]
     path.append((row, column))
-    used[row][column]=True
+    pathGrid[row][column]=True #findPath回朔用，會不停修改
+    used[row][column]=True #單純看有沒有經過，只會調成True
     allPath=[deepcopy(path)]
 
-    valid=lambda r, c: 0<=r<6 and 0<=c<6 and (not used[r][c]) and grid[r][c]==color
+    valid=lambda r, c: 0<=r<6 and 0<=c<6 and (not pathGrid[r][c]) and grid[r][c]==color
 
 
     for rd, cd in allDir:
@@ -56,7 +59,7 @@ def findPath(row, column, color, path=None): #尋找這個點能找到的最長�
         
         allPath.append(findPath(row+rd, column+cd, color, path))
         
-        used[row+rd][column+cd]=False
+        pathGrid[row+rd][column+cd]=False
         path.pop()
 
     idx=0
@@ -73,9 +76,11 @@ def finalLine(): #每個點的最長連線中取最長的
             if(used[i][j]): continue
 
             cur=findPath(i, j, grid[i][j])
-            used[i][j]=False
+            pathGrid[i][j]=False
             cur=findPath(cur[-1][0], cur[-1][1], grid[cur[-1][0]][cur[-1][1]])
-            for r, c in cur: used[r][c]=True
+
+            # printGrid()
+            # print()
 
             if(len(cur)>len(best)): best=deepcopy(cur)
     return best
@@ -83,7 +88,10 @@ def finalLine(): #每個點的最長連線中取最長的
 def printGrid(): #輸出表格，測試用
     for i in range(6):
         for j in range(6):
-            print(grid[i][j], end=" ")
+            if(used[i][j]):
+                print('X', end=' ')
+            else:
+                print(grid[i][j], end=" ")
         print()
     return
 
@@ -94,25 +102,31 @@ def scannGrid():
                 if(grid[i][j]==-1): return False
     return True
 
-print("starting")
-open_new("https://www.crazygames.com/game/collect-em-all")
-sleep(3)
-pyautogui.click(877, 605)
-sleep(6)
+def main():
+    global scr, used, pathGrid
+
+    print("starting")
+    open_new("https://www.crazygames.com/game/collect-em-all")
+    sleep(3)
+    pyautogui.click(877, 605)
+    sleep(6)
 
 
-while(True):
-    try:
-        pyautogui.locateOnScreen(stopImage, region=(724, 370, 63*6, 63*6))
-        break
-    except:
-        scr=pyautogui.screenshot(region=(TopLeft[0], TopLeft[1], GridSize*7, GridSize*7))
-        print("scanning")
-        while(not scannGrid()):
-            sleep(0.1)
+    while(True):
+        try:
+            pyautogui.locateOnScreen(stopImage, region=(724, 370, 63*6, 63*6))
+            break
+        except:
             scr=pyautogui.screenshot(region=(TopLeft[0], TopLeft[1], GridSize*7, GridSize*7))
-        used=[[False]*6 for _ in range(6)]
-        printGrid()
-        print("finding")
-        followPath(finalLine())
-print("end")
+            print("scanning")
+            while(not scannGrid()):
+                sleep(0.1)
+                scr=pyautogui.screenshot(region=(TopLeft[0], TopLeft[1], GridSize*7, GridSize*7))
+            used=[[False]*6 for _ in range(6)]
+            pathGrid=[[False]*6 for _ in range(6)]
+            printGrid()
+            print("finding")
+            followPath(finalLine())
+    print("end")
+
+main()
