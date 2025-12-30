@@ -17,3 +17,7 @@ Ender_hihi's code
 
 ## push.bat
 用於將程式碼發到github上
+
+## Collect Em All! 🕹️ Play on CrazyGames... 相關
+- Collect Em All 網站上的 html 存檔以及相關資料
+- 方便觀察(寫playwright偵測)
