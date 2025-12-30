@@ -20,7 +20,7 @@ stopImage="stop.png" #判斷遊戲結束的圖片
 #以下為之前寫好的函式
 def detect(r, c): #偵測圈圈顏色
     try:
-        return color.index(scr.getpixel(((c)*GridSize, (r)*GridSize)))
+        return color.index(scr.getpixel(((c)*GridSize, (r)*GridSize))) # pyright: ignore[reportAttributeAccessIssue]
     except:
         print("cant find color")
         sleep(0.1)
