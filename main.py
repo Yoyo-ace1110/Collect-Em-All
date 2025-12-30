@@ -1,6 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from pyscreeze import Box
+from PIL import Image
 from playwright.sync_api import sync_playwright, Playwright
 import pyautogui, time
 
@@ -44,21 +45,47 @@ class Rect:
         return (self.x, self.y, self.width, self.height)
 
 matrix: list[list[Colors]] = []     # 主要的矩陣
-MIN_SIMILARITY: float = 0.75        # 圖片最低相似度
+MIN_SIMILARITY: float = 0.83        # 圖片最低相似度
 target_path: str = "./target.png"   # 球的圖片路徑
+screenshot_path = "current_game_area.png"
 url: str = "https://www.crazygames.com/game/collect-em-all"
 
-def get_box_color(box: Box) -> Colors:
+def get_box_color(image: Image.Image, box: Box) -> Colors:
     """ 取得該box的顏色 """
-    color = pyautogui.pixel(*pyautogui.center(box))
-    return Colors.to_color(color)
+    center_x, center_y = pyautogui.center(box)
+    color = image.getpixel((int(center_x), int(center_y)))
+    if not (isinstance(color, tuple) and len(color) == 3):
+        raise RuntimeError(f"invalid color: {color}")
+    return Colors.to_color(color[:3])
 
-def read_matrix():
+def read_matrix(image_path: str):
     """尋找球並寫入矩陣"""
-    all_locations: list[Box] = list(
+    locations: list[Box] = list(
         # 螢幕上尋找球
-        pyautogui.locateAllOnScreen(target_path, confidence=MIN_SIMILARITY, grayscale=True)
+        pyautogui.locateAll(
+            target_path, 
+            image_path, 
+            confidence=MIN_SIMILARITY, 
+            grayscale=True
+        )
     )
+    all_locations: list[Box] = []
+    # 打開圖片並轉為 RGB
+    image = Image.open(image_path).convert("RGB")
+    # 去除相近座標
+    for box in locations:
+        # 檢查這個點是否已經在 all_locations 裡面了
+        is_duplicate = False
+        for u_box in all_locations:
+            # 計算兩個中心點的距離
+            dist = ((box.left - u_box.left)**2 + (box.top - u_box.top)**2)**0.5
+            # 如果距離小於 n 像素，視為同一顆球
+            if dist < 10:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            all_locations.append(box)
+    print(f"DEBUG: 原始找到 {len(locations)} 個點，去重後剩餘 {len(all_locations)} 顆球")
     if len(all_locations) != 36: raise RuntimeError("找不到6*6=36顆球")
     
     # 分成一個個row並加入matrix
@@ -68,51 +95,38 @@ def read_matrix():
         slice_ = all_locations[i:i+6]
         slice_.sort(key = lambda box : box.left)
         # 取得顏色
-        row = [get_box_color(element) for element in slice_]
+        row = [get_box_color(image, element) for element in slice_]
         # 加入matrix
         matrix.append(row)
 
 def main():
     """ 主程式 """
     sync: Playwright = sync_playwright().__enter__()
-    browser = sync.chromium.launch(headless=False)
+    browser = sync.chromium.launch(headless=False, args=["--start-maximized"])
+    context = browser.new_context(no_viewport=True)
+    page = context.new_page()
     
     print("正在開啟網頁...")
-    page = browser.new_page()
     page.goto("https://www.crazygames.com/game/collect-em-all")
-    page.wait_for_load_state("domcontentloaded")
+    page.wait_for_selector("#game-iframe")
+    page.wait_for_load_state("domcontentloaded") # networkidle
     
-    """
-    print("正在點擊 play_now 按鈕...")
-    # play_button = page.get_by_text("Play now")
-    # play_button.click()
-    try:
-        # 策略 A: 直接尋找最深層的文字並點擊
-        # 使用 force=True 強制點擊，避開元素被遮擋的檢查
-        page.get_by_text("Play now").first.click(timeout=5000, force=True)
-    except:
-        print("主頁面點擊失敗，嘗試穿透 iframe...")
-        try:
-            # 策略 B: 遍歷所有 iframe 尋找按鈕
-            # 這是處理嵌入式遊戲最暴力但也最有效的方法
-            for frame in page.frames:
-                btn = frame.get_by_text("Play now")
-                if btn.count() > 0:
-                    btn.first.click(timeout=5000)
-                    print("在 iframe 中成功點擊！")
-                    break
-        except Exception as e:
-            print(f"所有點擊嘗試均失敗: {e}")
-    page.wait_for_load_state("domcontentloaded")
-    """
+    print("正在辨識遊戲框架...")
+    game_element = page.locator("#game-iframe")
+    game_element.scroll_into_view_if_needed()
+    time.sleep(10)
+    game_element.screenshot(path=screenshot_path)
+    rect = game_element.bounding_box()
+    if not rect: raise RuntimeError("找不到遊戲框架")
+    game_region = (int(rect['x']), int(rect['y']), int(rect['width']), int(rect['height']))
+    print(f"成功鎖定遊戲區域: {game_region}")
     
     print("正在讀取各格的顏色")
-    time.sleep(10)
-    read_matrix()
+    read_matrix(screenshot_path)
     print(matrix)
     
     print("正在關閉網頁...")
-    # browser.close()
+    browser.close()
 
 # 執行main
 if __name__ == "__main__": main()
