@@ -46,6 +46,50 @@ class Point:
         ''' 取得tuple(x, y) '''
         return (self.x, self.y)
 
+    # --- 正向運算 (Binary Operators) ---
+    def __add__(self, other: Point|tuple|int|float) -> Point:
+        """ 加法: self + other """
+        x, y = self._unpack(other)
+        return Point(self.x + x, self.y + y)
+
+    def __sub__(self, other: Point|tuple|int|float) -> Point:
+        """ 減法: self - other """
+        x, y = self._unpack(other)
+        return Point(self.x - x, self.y - y)
+
+    # --- 反向運算 (Reflected Operators) ---
+    def __radd__(self, other: Point|tuple|int|float) -> Point:
+        return self.__add__(other)
+
+    def __rsub__(self, other: Point|tuple|int|float) -> Point:
+        x, y = self._unpack(other)
+        return Point(x - self.x, y - self.y)
+
+    # --- 就地運算 (Inplace Operators) ---
+    def __iadd__(self, other: Point|tuple|int|float) -> Point:
+        """ 就地加法: self += other """
+        x, y = self._unpack(other)
+        self.x += int(x)
+        self.y += int(y)
+        return self
+
+    def __isub__(self, other: Point|tuple|int|float) -> Point:
+        """ 就地減法: self -= other """
+        x, y = self._unpack(other)
+        self.x -= int(x)
+        self.y -= int(y)
+        return self
+
+    # 輔助函數: 解析各種輸入格式
+    def _unpack(self, other) -> tuple[int|float, int|float]:
+        if isinstance(other, Point):
+            return other.x, other.y
+        elif isinstance(other, (tuple, list)) and len(other) >= 2:
+            return other[0], other[1]
+        elif isinstance(other, (int, float)):
+            return other, other
+        return 0, 0
+
     def __str__(self) -> str:
         return f"Point({self.x}, {self.y})"
 
@@ -78,7 +122,7 @@ def get_box_color(image: Image.Image, box: Box) -> Colors:
     return Colors.to_color(color[:3])
 
 # 從螢幕讀取矩陣
-def read_matrix(image_path: str = screenshot_path) -> None:
+def read_matrix(iframe_topleft: Point, image_path: str = screenshot_path) -> None:
     """尋找球並寫入矩陣"""
     global start_point, grid_spacing
     matrix.clear()
@@ -117,6 +161,7 @@ def read_matrix(image_path: str = screenshot_path) -> None:
     box00, box11 = all_locations[0], all_locations[7] # 在(0, 0)和(1, 1)的box
     start_point = Point(box00.left+box00.width/2, box00.top+box00.height/2)
     grid_spacing = Point(box11.left-box00.left, box11.top-box00.top)
+    start_point += iframe_topleft
     
     # 分成一個個row並加入matrix
     for i in range(0, 36, 6):
@@ -177,10 +222,11 @@ def main():
     game_element.screenshot(path=screenshot_path)
     rect = game_element.bounding_box()
     if not rect: raise RuntimeError("找不到遊戲框架")
+    iframe_topleft = Point(rect['x'], rect['y'])
     print(f"成功鎖定遊戲區域")
     
     print("正在讀取各格的顏色...")
-    read_matrix(screenshot_path)
+    read_matrix(iframe_topleft, screenshot_path)
     print("DEBUG: ")
     output_matrix(matrix)
     
