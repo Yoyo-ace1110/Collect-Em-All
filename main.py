@@ -2,7 +2,7 @@ from __future__ import annotations
 from enum import Enum
 from pyscreeze import Box
 from PIL import Image
-from playwright.sync_api import sync_playwright, Playwright
+from playwright.sync_api import sync_playwright, Playwright, Page
 import pyautogui, time
 
 class Colors(Enum):
@@ -41,7 +41,8 @@ class Point:
         self.x: int = int(x)
         self.y: int = int(y)
     
-    def get_pair(self) -> tuple[int, int]:
+    @property
+    def pair(self) -> tuple[int, int]:
         ''' 取得tuple(x, y) '''
         return (self.x, self.y)
 
@@ -136,6 +137,25 @@ def pixel_pos(grid: Point, topleft: Point, offset: Point) -> Point:
     abs_y = topleft.y + rel_y
     return Point(abs_x, abs_y)
 
+# 拖曳連線
+def drag_path(page: Page, points: list[Point]):
+    """ 在points中一個個拖曳並連線 """
+    last_point = pixel_pos(points[-1], start_point, grid_spacing)
+    # 找到第一個點並按下
+    first_point = pixel_pos(points[0], start_point, grid_spacing)
+    page.mouse.move(*first_point.pair)
+    page.mouse.down()
+    print(f"DEBUG: 在 {first_point} 按下滑鼠")
+    # 迴圈拖曳
+    for point in points[1:]: # 跳過第一個 (只要按下去，不用拖曳)
+        # 拖曳 (step是移動平滑度，可以調整)
+        pixel = pixel_pos(point, start_point, grid_spacing)
+        page.mouse.move(*pixel.pair, steps=5)
+        print(f"DEBUG: 移動滑鼠至 {pixel}")
+    # 鬆開滑鼠
+    page.mouse.up()
+    print(f"DEBUG: 在 {last_point} 鬆開滑鼠")
+
 # 主程式函數
 def main():
     """ 主程式 """
@@ -159,17 +179,20 @@ def main():
     if not rect: raise RuntimeError("找不到遊戲框架")
     print(f"成功鎖定遊戲區域")
     
-    print("正在讀取各格的顏色")
+    print("正在讀取各格的顏色...")
     read_matrix(screenshot_path)
+    print("DEBUG: ")
     output_matrix(matrix)
     
     pixel00 = pixel_pos(Point(0, 0), start_point, grid_spacing)
     pixel11 = pixel_pos(Point(1, 1), start_point, grid_spacing)
-    print(f"矩陣 (0, 0) 的像素位置: {pixel00}")
-    print(f"矩陣 (1, 1) 的像素位置: {pixel11}")
+    print(f"DEBUG: 矩陣 (0, 0) 的像素位置: {pixel00}")
+    print(f"DEBUG: 矩陣 (1, 1) 的像素位置: {pixel11}")
+    drag_path(page, [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 2)])
     
     print("正在關閉網頁...")
     browser.close()
+    print("程式執行完畢")
 
 # 執行main
 if __name__ == "__main__": main()
