@@ -157,7 +157,7 @@ def read_matrix(iframe_topleft: Point, image_path: str = screenshot_path) -> Non
     if len(all_locations) != 36: raise RuntimeError("找不到6*6=36顆球")
     
     # 記錄 start_point, grid_spacing
-    all_locations.sort(key=lambda box : box.top)
+    all_locations.sort(key=lambda box : (box.top, box.left))
     box00, box11 = all_locations[0], all_locations[7] # 在(0, 0)和(1, 1)的box
     start_point = Point(box00.left+box00.width/2, box00.top+box00.height/2)
     grid_spacing = Point(box11.left-box00.left, box11.top-box00.top)
@@ -165,22 +165,15 @@ def read_matrix(iframe_topleft: Point, image_path: str = screenshot_path) -> Non
     
     # 分成一個個row並加入matrix
     for i in range(0, 36, 6):
-        # 分割成6行
-        slice_ = all_locations[i:i+6]
-        slice_.sort(key = lambda box : box.left)
-        # 取得顏色
-        row = [get_box_color(image, element) for element in slice_]
-        # 加入matrix
-        matrix.append(row)
+        slice_ = all_locations[i:i+6]                               # 分割成6行
+        row = [get_box_color(image, element) for element in slice_] # 取得顏色
+        matrix.append(row)                                           # 加入matrix
         
 # 座標轉換
 def pixel_pos(grid: Point, topleft: Point, offset: Point) -> Point:
     """將矩陣的座標轉為像素座標"""
-    rel_x = grid.x * offset.x
-    rel_y = grid.y * offset.y
-    abs_x = topleft.x + rel_x
-    abs_y = topleft.y + rel_y
-    return Point(abs_x, abs_y)
+    rel_point = Point(grid.x*offset.x, grid.y*offset.y)
+    return topleft+rel_point
 
 # 拖曳連線
 def drag_path(page: Page, points: list[Point]):
