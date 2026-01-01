@@ -13,7 +13,7 @@ Ender_hihi's code
 - 最後將結果print()出來
 - 等待載入的部分還是有用死板的time.sleep(10)
 - 若程式執行有誤可以修改MIN_SIMILARITY參數
-- 嘗試拖曳滑鼠 (0, 0) -> (1, 0) -> (0, 1) -> (1, 1)
+- 可以自己DFS尋找最長路徑並遊玩
 - 尚未跟NEWcollectEmAll.py整合
 
 ## push.bat

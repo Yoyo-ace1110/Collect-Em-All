@@ -7,8 +7,7 @@ from keyboard import is_pressed
 from playwright.sync_api import sync_playwright, Playwright, Page
 import pyautogui, time
 
-"""
-遊戲規則:
+""" 遊戲規則:
 對於每個點 可以跟八方位的任一個點(要same color)連線
 至少要連3個點 連完之後的點會全數消除
 上面的點會在下面空缺時往下補 最上面空缺則會隨機生成
@@ -211,7 +210,7 @@ def drag_path(page: Page, points: list[Point]):
         pixel = pixel_pos(point)
         page.mouse.move(*pixel.pair, steps=5)
         print(f"DEBUG: 移動滑鼠至 {pixel}")
-        time.sleep(1)
+        time.sleep(0.6)
     # 鬆開滑鼠
     page.mouse.up()
     print(f"DEBUG: 在 {last_point} 鬆開滑鼠")
@@ -241,14 +240,15 @@ def find_longest_move(color_matrix: list[list[Colors]]) -> list[Point]:
     visited: list[list[bool]] = [[False for _ in range(6)] for __ in range(6)]
     best_path: list[Point] = []
     best_len = 0
-    row, column = 0, -1
+    row, column = 0, 0
     # 開始訪問
     while (row <= 5 and column <= 5):
-        # 下一個點
-        row += (column+1)//6
-        column = (column+1)%6
         # 略過已訪問的點
-        if visited[row][column]: continue
+        if visited[row][column]: 
+            # 下一個點
+            row += (column+1)//6
+            column = (column+1)%6
+            continue
         # DFS 並更新最佳路線
         visits = DFS(Point(column, row), color_matrix)
         visit_len = len(visits)
@@ -256,7 +256,10 @@ def find_longest_move(color_matrix: list[list[Colors]]) -> list[Point]:
             best_path = visits
             best_len = visit_len
         # 標記尋訪過的點
-        for visit in visits: visited[visit.y][visit.x] = True 
+        for visit in visits: visited[visit.y][visit.x] = True
+        # 下一個點
+        row += (column+1)//6
+        column = (column+1)%6
     return best_path
 
 # 核心演算法: DFS
@@ -323,10 +326,16 @@ def main():
         print("\t連線中...")
         longest_move = find_longest_move(color_matrix)
         drag_path(page=page, points=longest_move)
+        
+        print("等待球被消除")
+        move_len = len(longest_move)
+        # 依據連線步長決定等待時間
+        if move_len <= 6: time.sleep(2.5)
+        elif move_len <= 9: time.sleep(4)
+        else: time.sleep(8)
     
     # print(f"iframe_topleft: {iframe_topleft}")
     # print(f"pixel_pos(Point(0, 0)): {pixel_pos(Point(0, 0))}")
-    # drag_path(page, [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1)])
     
     print("正在關閉網頁...")
     browser.close()
