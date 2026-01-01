@@ -208,9 +208,9 @@ def drag_path(page: Page, points: list[Point]):
     for point in points[1:]:
         # 拖曳 (step是移動平滑度 可以調整)
         pixel = pixel_pos(point)
-        page.mouse.move(*pixel.pair, steps=5)
+        page.mouse.move(*pixel.pair, steps=4)
         print(f"DEBUG: 移動滑鼠至 {pixel}")
-        time.sleep(0.6)
+        time.sleep(0.4)
     # 鬆開滑鼠
     page.mouse.up()
     print(f"DEBUG: 在 {last_point} 鬆開滑鼠")
