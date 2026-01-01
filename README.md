@@ -14,7 +14,7 @@ Ender_hihi's code
 - 等待載入的部分還是有用死板的time.sleep(10)
 - 若程式執行有誤可以修改MIN_SIMILARITY參數
 - 可以自己DFS尋找最長路徑並遊玩
-- 尚未跟NEWcollectEmAll.py整合
+- 可獨立運作
 
 ## push.bat
 用於將程式碼發到github上
