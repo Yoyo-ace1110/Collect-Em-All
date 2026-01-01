@@ -3,8 +3,18 @@ from enum import Enum
 from pyscreeze import Box
 from PIL import Image
 from typing import Any
+from keyboard import is_pressed
 from playwright.sync_api import sync_playwright, Playwright, Page
 import pyautogui, time
+
+"""
+遊戲規則:
+對於每個點 可以跟八方位的任一個點(要same color)連線
+至少要連3個點 連完之後的點會全數消除
+上面的點會在下面空缺時往下補 最上面空缺則會隨機生成
+不須考慮沒有點可以連線的情況 盡量尋找最長的連線
+有步數限制(暫不考慮) 每次都重新偵測球(避免受特殊規則影響)
+"""
 
 class Colors(Enum):
     # 各種顏色(RGB)
@@ -41,6 +51,12 @@ class Point:
         ''' 初始化座標 '''
         self.x: int = int(x)
         self.y: int = int(y)
+    
+    def near(self, other: Point) -> bool:
+        """ 檢查兩個點之間是否可以互通 """
+        if abs(other.x-self.x) > 1: return False
+        if abs(other.y-self.y) > 1: return False
+        return True
     
     @property
     def pair(self) -> tuple[int, int]:
@@ -155,13 +171,13 @@ def read_matrix(image_path: str = screenshot_path) -> None:
         for u_box in all_locations:
             # 計算兩個中心點的距離
             dist = ((box.left - u_box.left)**2 + (box.top - u_box.top)**2)**0.5
-            # 如果距離小於 n 像素，視為同一顆球
+            # 如果距離小於 n 像素 視為同一顆球
             if dist < 10:
                 is_duplicate = True
                 break
         if not is_duplicate:
             all_locations.append(box)
-    print(f"DEBUG: 原始找到 {len(locations)} 個點，去重後剩餘 {len(all_locations)} 顆球")
+    print(f"DEBUG: 原始找到 {len(locations)} 個點 去重後剩餘 {len(all_locations)} 顆球")
     if len(all_locations) != 36: raise RuntimeError("找不到6*6=36顆球")
     
     # 分成一個個 row 並加入 color_matrix && point_matrix
@@ -189,9 +205,9 @@ def drag_path(page: Page, points: list[Point]):
     page.mouse.move(*first_point.pair)
     page.mouse.down()
     print(f"DEBUG: 在 {first_point} 按下滑鼠")
-    # 迴圈拖曳
-    for point in points[1:]: # 跳過第一個 (只要按下去，不用拖曳)
-        # 拖曳 (step是移動平滑度，可以調整)
+    # 迴圈拖曳(跳過第一個)
+    for point in points[1:]:
+        # 拖曳 (step是移動平滑度 可以調整)
         pixel = pixel_pos(point)
         page.mouse.move(*pixel.pair, steps=5)
         print(f"DEBUG: 移動滑鼠至 {pixel}")
@@ -199,6 +215,73 @@ def drag_path(page: Page, points: list[Point]):
     # 鬆開滑鼠
     page.mouse.up()
     print(f"DEBUG: 在 {last_point} 鬆開滑鼠")
+
+# 尋找周圍同色鄰居
+def get_neighbors(point: Point, color_matrix: list[list[Colors]]) -> list[Point]:
+    """ 取得周圍同色球的座標 """
+    neighbors: list[Point] = []
+    point_color = color_matrix[point.y][point.x]
+    # 八方位找
+    for offset_x in [-1, 0, 1]:
+        for offset_y in [-1, 0, 1]:
+            # 記錄座標
+            detect_point = point+Point(offset_x, offset_y)
+            x, y = detect_point.x, detect_point.y
+            # 跳過自己 && 邊界檢查
+            if (offset_x == 0 and offset_y == 0): continue
+            if (x < 0 or y < 0 or x > 5 or y > 5): continue
+            # 比較顏色
+            if color_matrix[y][x] == point_color:
+                neighbors.append(detect_point)
+    return neighbors
+
+# 尋找最長連線
+def find_longest_move(color_matrix: list[list[Colors]]) -> list[Point]:
+    """ 由左上開始DFS 尋找過的點就消除 分岔就兩個都跑一遍 """
+    visited: list[list[bool]] = [[False for _ in range(6)] for __ in range(6)]
+    best_path: list[Point] = []
+    best_len = 0
+    row, column = 0, -1
+    # 開始訪問
+    while (row <= 5 and column <= 5):
+        # 下一個點
+        row += (column+1)//6
+        column = (column+1)%6
+        # 略過已訪問的點
+        if visited[row][column]: continue
+        # DFS 並更新最佳路線
+        visits = DFS(Point(column, row), color_matrix)
+        visit_len = len(visits)
+        if visit_len >= 3 and visit_len > best_len:
+            best_path = visits
+            best_len = visit_len
+        # 標記尋訪過的點
+        for visit in visits: visited[visit.y][visit.x] = True 
+    return best_path
+
+# 核心演算法: DFS
+def DFS(point: Point, color_matrix: list[list[Colors]], current_path: list[Point] = []) -> list[Point]:
+    """ 
+    深度優先搜尋：利用回溯尋找該區域內最長的路徑。
+    current_path 用於記錄目前已經走過的點，避免循環連線。
+    """
+    if not current_path: current_path = [point]
+    best_sub_path = list(current_path)
+    # 取得周圍同色鄰居
+    neighbors = get_neighbors(point, color_matrix)
+    for neighbor in neighbors:
+        # 檢查這個鄰居是否已經在目前的路徑中（不可重複使用同一個點）
+        if any(p.x == neighbor.x and p.y == neighbor.y for p in current_path):
+            continue 
+        # 前進: 加入路徑並繼續向下探索
+        current_path.append(neighbor)
+        res_path = DFS(neighbor, color_matrix, current_path)
+        # 比較: 如果這條分岔走出來的路比較長，就更新它
+        if len(res_path) > len(best_sub_path):
+            best_sub_path = list(res_path)
+        # 回溯: 將點移除，讓下一個鄰居的分岔可以重新嘗試走這條路
+        current_path.pop()
+    return best_sub_path
 
 # 主程式函數
 def main():
@@ -217,30 +300,37 @@ def main():
     print("正在辨識遊戲框架...")
     game_element = page.locator("#game-iframe")
     game_element.scroll_into_view_if_needed()
-    time.sleep(4)           # 等遊戲載入，可調
-    game_element.screenshot(path=screenshot_path)
-    rect = game_element.bounding_box()
+    time.sleep(4)           # 等遊戲載入 可調
     game_element.click()    # 聚焦
+    rect = game_element.bounding_box()
     if not rect: raise RuntimeError("找不到遊戲框架")
     iframe_topleft = Point(rect['x'], rect['y'])
     print(f"成功鎖定遊戲區域")
     
-    print("在偵測縮放比例")
     dpr = page.evaluate("window.devicePixelRatio")
     print(f"DEBUG: 偵測到螢幕縮放倍率為: {dpr}")
     
-    print("正在讀取各格的顏色...")
-    read_matrix(screenshot_path)
-    print("DEBUG: ")
-    output_matrix(color_matrix)
+    print("正在遊玩...")
+    while True:
+        # Esc 可以退出
+        if is_pressed("esc"): break
+        
+        print("\t正在讀取各格的顏色...")
+        game_element.screenshot(path=screenshot_path)
+        read_matrix(screenshot_path)
+        output_matrix(color_matrix)
+        
+        print("\t連線中...")
+        longest_move = find_longest_move(color_matrix)
+        drag_path(page=page, points=longest_move)
     
-    print(f"iframe_topleft: {iframe_topleft}")
-    print(f"pixel_pos(Point(0, 0)): {pixel_pos(Point(0, 0))}")
-    drag_path(page, [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1)])
+    # print(f"iframe_topleft: {iframe_topleft}")
+    # print(f"pixel_pos(Point(0, 0)): {pixel_pos(Point(0, 0))}")
+    # drag_path(page, [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1)])
     
     print("正在關閉網頁...")
-    # browser.close()
+    browser.close()
     print("程式執行完畢")
 
-# 執行main
+# 執行 main()
 if __name__ == "__main__": main()
