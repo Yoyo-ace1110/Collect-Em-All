@@ -202,17 +202,17 @@ def drag_path(page: Page, points: list[Point]):
     first_point = pixel_pos(points[0])
     page.mouse.move(*first_point.pair)
     page.mouse.down()
-    print(f"DEBUG: 在 {first_point} 按下滑鼠")
+    # print(f"DEBUG: 在 {first_point} 按下滑鼠")
     # 迴圈拖曳(跳過第一個)
     for point in points[1:]:
         # 拖曳 (step是移動平滑度 可以調整)
         pixel = pixel_pos(point)
         page.mouse.move(*pixel.pair, steps=4)
-        print(f"DEBUG: 移動滑鼠至 {pixel}")
-        time.sleep(0.4)
+        # print(f"DEBUG: 移動滑鼠至 {pixel}")
+        time.sleep(0.2)
     # 鬆開滑鼠
     page.mouse.up()
-    print(f"DEBUG: 在 {last_point} 鬆開滑鼠")
+    # print(f"DEBUG: 在 {last_point} 鬆開滑鼠")
 
 # 尋找周圍同色鄰居
 def get_neighbors(point: Point, color_matrix: list[list[Colors]]) -> list[Point]:
@@ -233,6 +233,23 @@ def get_neighbors(point: Point, color_matrix: list[list[Colors]]) -> list[Point]
                 neighbors.append(detect_point)
     return neighbors
 
+# 初判最長長度
+def len_all_neighbors(point: Point) -> int:
+    """ 使用 BFS 算出該區域總球數上限 """
+    visited = [[False for _ in range(6)] for _ in range(6)]
+    queue = [point]
+    visited[point.y][point.x] = True
+    count = 0
+    
+    while queue:
+        curr = queue.pop(0)
+        count += 1
+        for n in get_neighbors(curr, color_matrix):
+            if not visited[n.y][n.x]:
+                visited[n.y][n.x] = True # 加入隊列前就標記，避免重複排隊
+                queue.append(n)
+    return count
+
 # 尋找最長連線
 def find_longest_move(color_matrix: list[list[Colors]]) -> list[Point]:
     """ 由左上開始DFS 尋找過的點就消除 分岔就兩個都跑一遍 """
@@ -242,14 +259,18 @@ def find_longest_move(color_matrix: list[list[Colors]]) -> list[Point]:
     row, column = 0, 0
     # 開始訪問
     while (row <= 5 and column <= 5):
+        # 剪枝: 去除周圍加總根本不會超過的問題
+        max_len = len_all_neighbors(Point(column, row))
+        skip = max_len <= best_len
         # 略過已訪問的點
-        if visited[row][column]: 
-            # 下一個點
+        skip = skip or visited[row][column]
+        # 下一個點
+        if skip: 
             row += (column+1)//6
             column = (column+1)%6
             continue
         # DFS 並更新最佳路線
-        visits = DFS(Point(column, row), color_matrix)
+        visits = DFS(Point(column, row), color_matrix, max_len=max_len)
         visit_len = len(visits)
         if visit_len >= 3 and visit_len > best_len:
             best_path = visits
@@ -262,22 +283,24 @@ def find_longest_move(color_matrix: list[list[Colors]]) -> list[Point]:
     return best_path
 
 # 核心演算法: DFS
-def DFS(point: Point, color_matrix: list[list[Colors]], current_path: list[Point] = []) -> list[Point]:
+def DFS(point: Point, color_matrix: list[list[Colors]], 
+        current_path: list[Point]|None = None, max_len: int = 36) -> list[Point]:
     """ 
     深度優先搜尋：利用回溯尋找該區域內最長的路徑。
     current_path 用於記錄目前已經走過的點，避免循環連線。
     """
-    if not current_path: current_path = [point]
+    if current_path is None: current_path = [point]
+    if len(current_path) == max_len: return list(current_path)
     best_sub_path = list(current_path)
-    # 取得周圍同色鄰居
-    neighbors = get_neighbors(point, color_matrix)
+    neighbors = get_neighbors(point, color_matrix) # 取得周圍同色鄰居
+
     for neighbor in neighbors:
-        # 檢查這個鄰居是否已經在目前的路徑中（不可重複使用同一個點）
+        # 檢查這個鄰居是否已經在目前的路徑中
         if any(p.x == neighbor.x and p.y == neighbor.y for p in current_path):
             continue 
         # 前進: 加入路徑並繼續向下探索
         current_path.append(neighbor)
-        res_path = DFS(neighbor, color_matrix, current_path)
+        res_path = DFS(neighbor, color_matrix, current_path, max_len)
         # 比較: 如果這條分岔走出來的路比較長，就更新它
         if len(res_path) > len(best_sub_path):
             best_sub_path = list(res_path)
@@ -320,7 +343,7 @@ def main():
         print("\t正在讀取各格的顏色...")
         game_element.screenshot(path=screenshot_path)
         read_matrix(screenshot_path)
-        output_matrix(color_matrix)
+        # output_matrix(color_matrix)
         
         print("\t連線中...")
         longest_move = find_longest_move(color_matrix)
