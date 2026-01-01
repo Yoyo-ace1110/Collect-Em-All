@@ -2,6 +2,7 @@ from __future__ import annotations
 from enum import Enum
 from pyscreeze import Box
 from PIL import Image
+from typing import Any
 from playwright.sync_api import sync_playwright, Playwright, Page
 import pyautogui, time
 
@@ -96,21 +97,27 @@ class Point:
     def __repr__(self) -> str:
         return self.__str__()
 
-matrix: list[list[Colors]] = []             # 主要的矩陣
+color_matrix: list[list[Colors]] = []       # 顏色矩陣
+point_matrix: list[list[Point]] = []        # 座標矩陣
 MIN_SIMILARITY: float = 0.83                # 圖片最低相似度
 target_path: str = "./target.png"           # 球的圖片路徑
 screenshot_path = "current_game_area.png"   # 暫時截圖
 url: str = "https://www.crazygames.com/game/collect-em-all"
-start_point: Point                          # 第一顆球的座標
-grid_spacing: Point                         # (0, 0)跟(1, 1)的間距
+iframe_topleft: Point                       # 第一顆球的座標
+dpr: float # 縮放比例
 
 # 測試用途: 輸出矩陣
-def output_matrix(matrix: list[list[Colors]]) -> None:
+def output_matrix(matrix: list[list[Any]]) -> None:
     """ 輸出顏色矩陣(測試用) """
     for row in matrix:
-        for color in row:
-            print(f"{color}\t", end="")
+        for element in row:
+            print(f"{element}\t", end="")
         print()
+
+# 取得中心座標
+def get_box_center(box: Box) -> Point:
+    """ 取得box的中心座標 """
+    return Point(box.left+box.width/2, box.top+box.height/2)
 
 # 讀取指定一顆球的顏色
 def get_box_color(image: Image.Image, box: Box) -> Colors:
@@ -122,13 +129,14 @@ def get_box_color(image: Image.Image, box: Box) -> Colors:
     return Colors.to_color(color[:3])
 
 # 從螢幕讀取矩陣
-def read_matrix(iframe_topleft: Point, image_path: str = screenshot_path) -> None:
+def read_matrix(image_path: str = screenshot_path) -> None:
     """尋找球並寫入矩陣"""
-    global start_point, grid_spacing
-    matrix.clear()
+    color_matrix.clear()
+    point_matrix.clear()
     all_locations: list[Box] = []
+    
+    # 螢幕上尋找球
     locations: list[Box] = list(
-        # 螢幕上尋找球
         pyautogui.locateAll(
             target_path, 
             image_path, 
@@ -156,40 +164,38 @@ def read_matrix(iframe_topleft: Point, image_path: str = screenshot_path) -> Non
     print(f"DEBUG: 原始找到 {len(locations)} 個點，去重後剩餘 {len(all_locations)} 顆球")
     if len(all_locations) != 36: raise RuntimeError("找不到6*6=36顆球")
     
-    # 記錄 start_point, grid_spacing
-    all_locations.sort(key=lambda box : (box.top, box.left))
-    box00, box11 = all_locations[0], all_locations[7] # 在(0, 0)和(1, 1)的box
-    start_point = Point(box00.left+box00.width/2, box00.top+box00.height/2)
-    grid_spacing = Point(box11.left-box00.left, box11.top-box00.top)
-    start_point += iframe_topleft
-    
-    # 分成一個個row並加入matrix
+    # 分成一個個 row 並加入 color_matrix && point_matrix
+    all_locations.sort(key=lambda box : box.top)
     for i in range(0, 36, 6):
-        slice_ = all_locations[i:i+6]                               # 分割成6行
-        row = [get_box_color(image, element) for element in slice_] # 取得顏色
-        matrix.append(row)                                           # 加入matrix
-        
+        slice_ = all_locations[i:i+6]                             # 分割成6行
+        slice_.sort(key=lambda box: box.left)                     # 橫向排序
+        color_row = [get_box_color(image, box) for box in slice_] # 取得顏色
+        point_row = [get_box_center(box) for box in slice_]       # 取得座標
+        color_matrix.append(color_row)                            # 加入color_matrix
+        point_matrix.append(point_row)                            # 加入point_matrix
+    
 # 座標轉換
-def pixel_pos(grid: Point, topleft: Point, offset: Point) -> Point:
+def pixel_pos(grid: Point) -> Point:
     """將矩陣的座標轉為像素座標"""
-    rel_point = Point(grid.x*offset.x, grid.y*offset.y)
-    return topleft+rel_point
+    pos = point_matrix[grid.y][grid.x]
+    return iframe_topleft + Point(pos.x/dpr, pos.y/dpr)
 
 # 拖曳連線
 def drag_path(page: Page, points: list[Point]):
     """ 在points中一個個拖曳並連線 """
-    last_point = pixel_pos(points[-1], start_point, grid_spacing)
+    last_point = pixel_pos(points[-1])
     # 找到第一個點並按下
-    first_point = pixel_pos(points[0], start_point, grid_spacing)
+    first_point = pixel_pos(points[0])
     page.mouse.move(*first_point.pair)
     page.mouse.down()
     print(f"DEBUG: 在 {first_point} 按下滑鼠")
     # 迴圈拖曳
     for point in points[1:]: # 跳過第一個 (只要按下去，不用拖曳)
         # 拖曳 (step是移動平滑度，可以調整)
-        pixel = pixel_pos(point, start_point, grid_spacing)
+        pixel = pixel_pos(point)
         page.mouse.move(*pixel.pair, steps=5)
         print(f"DEBUG: 移動滑鼠至 {pixel}")
+        time.sleep(1)
     # 鬆開滑鼠
     page.mouse.up()
     print(f"DEBUG: 在 {last_point} 鬆開滑鼠")
@@ -197,7 +203,7 @@ def drag_path(page: Page, points: list[Point]):
 # 主程式函數
 def main():
     """ 主程式 """
-    global start_point, grid_spacing
+    global iframe_topleft, dpr
     sync: Playwright = sync_playwright().__enter__()
     browser = sync.chromium.launch(headless=False, args=["--start-maximized"])
     context = browser.new_context(no_viewport=True)
@@ -206,31 +212,34 @@ def main():
     print("正在開啟網頁...")
     page.goto("https://www.crazygames.com/game/collect-em-all")
     page.wait_for_selector("#game-iframe")
-    page.wait_for_load_state("domcontentloaded") # networkidle
+    page.wait_for_load_state("domcontentloaded")
     
     print("正在辨識遊戲框架...")
     game_element = page.locator("#game-iframe")
     game_element.scroll_into_view_if_needed()
-    time.sleep(8)
+    time.sleep(4)           # 等遊戲載入，可調
     game_element.screenshot(path=screenshot_path)
     rect = game_element.bounding_box()
+    game_element.click()    # 聚焦
     if not rect: raise RuntimeError("找不到遊戲框架")
     iframe_topleft = Point(rect['x'], rect['y'])
     print(f"成功鎖定遊戲區域")
     
-    print("正在讀取各格的顏色...")
-    read_matrix(iframe_topleft, screenshot_path)
-    print("DEBUG: ")
-    output_matrix(matrix)
+    print("在偵測縮放比例")
+    dpr = page.evaluate("window.devicePixelRatio")
+    print(f"DEBUG: 偵測到螢幕縮放倍率為: {dpr}")
     
-    pixel00 = pixel_pos(Point(0, 0), start_point, grid_spacing)
-    pixel11 = pixel_pos(Point(1, 1), start_point, grid_spacing)
-    print(f"DEBUG: 矩陣 (0, 0) 的像素位置: {pixel00}")
-    print(f"DEBUG: 矩陣 (1, 1) 的像素位置: {pixel11}")
-    drag_path(page, [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 2)])
+    print("正在讀取各格的顏色...")
+    read_matrix(screenshot_path)
+    print("DEBUG: ")
+    output_matrix(color_matrix)
+    
+    print(f"iframe_topleft: {iframe_topleft}")
+    print(f"pixel_pos(Point(0, 0)): {pixel_pos(Point(0, 0))}")
+    drag_path(page, [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1)])
     
     print("正在關閉網頁...")
-    browser.close()
+    # browser.close()
     print("程式執行完畢")
 
 # 執行main
