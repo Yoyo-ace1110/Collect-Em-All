@@ -1,3 +1,10 @@
+""" 遊戲規則:
+對於每個點 可以跟八方位的任一個點(要same color)連線
+至少要連3個點 連完之後的點會全數消除
+上面的點會在下面空缺時往下補 最上面空缺則會隨機生成
+不須考慮沒有點可以連線的情況 盡量尋找最長的連線
+有步數限制(暫不考慮) 每次都重新偵測球(避免受特殊規則影響)
+"""
 from __future__ import annotations
 from enum import Enum
 from pyscreeze import Box
@@ -6,14 +13,6 @@ from typing import Any
 from keyboard import is_pressed
 from playwright.sync_api import sync_playwright, Playwright, Page
 import pyautogui, time
-
-""" 遊戲規則:
-對於每個點 可以跟八方位的任一個點(要same color)連線
-至少要連3個點 連完之後的點會全數消除
-上面的點會在下面空缺時往下補 最上面空缺則會隨機生成
-不須考慮沒有點可以連線的情況 盡量尋找最長的連線
-有步數限制(暫不考慮) 每次都重新偵測球(避免受特殊規則影響)
-"""
 
 class Colors(Enum):
     # 各種顏色(RGB)
