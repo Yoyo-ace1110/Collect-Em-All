@@ -37,7 +37,7 @@ class Colors(Enum):
 
 class Point:
     def __init__(self, x: int|float, y: int|float) -> None:
-        ''' 初始化座標 '''
+        """ 初始化座標 """
         self.x: int = int(x)
         self.y: int = int(y)
     
@@ -49,7 +49,7 @@ class Point:
     
     @property
     def pair(self) -> tuple[int, int]:
-        ''' 取得tuple(x, y) '''
+        """ 取得tuple(x, y) """
         return (self.x, self.y)
 
     # --- 正向運算 (Binary Operators) ---
@@ -149,7 +149,6 @@ def read_matrix(image_path: str = screenshot_path) -> None:
             grayscale=True
         )
     )
-    
     # 打開圖片並轉為 RGB
     image = Image.open(image_path).convert("RGB")
     
@@ -164,8 +163,7 @@ def read_matrix(image_path: str = screenshot_path) -> None:
             if dist < 10:
                 is_duplicate = True
                 break
-        if not is_duplicate:
-            all_locations.append(box)
+        if not is_duplicate: all_locations.append(box)
     print(f"DEBUG: 原始找到 {len(locations)} 個點 去重後剩餘 {len(all_locations)} 顆球")
     if len(all_locations) != 36: raise RuntimeError("找不到6*6=36顆球")
     
@@ -188,22 +186,17 @@ def pixel_pos(grid: Point) -> Point:
 # 拖曳連線
 def drag_path(page: Page, points: list[Point]):
     """ 在points中一個個拖曳並連線 """
-    last_point = pixel_pos(points[-1])
     # 找到第一個點並按下
     first_point = pixel_pos(points[0])
     page.mouse.move(*first_point.pair)
     page.mouse.down()
-    # print(f"DEBUG: 在 {first_point} 按下滑鼠")
     # 迴圈拖曳(跳過第一個)
     for point in points[1:]:
         # 拖曳 (step是移動平滑度 可以調整)
         pixel = pixel_pos(point)
         page.mouse.move(*pixel.pair, steps=4)
-        # print(f"DEBUG: 移動滑鼠至 {pixel}")
         time.sleep(0.2)
-    # 鬆開滑鼠
-    page.mouse.up()
-    # print(f"DEBUG: 在 {last_point} 鬆開滑鼠")
+    page.mouse.up() # 鬆開滑鼠
 
 # 尋找周圍同色鄰居
 def get_neighbors(point: Point, color_matrix: list[list[Colors]]) -> list[Point]:
@@ -237,7 +230,7 @@ def len_all_neighbors(point: Point) -> int:
         count += 1
         for n in get_neighbors(curr, color_matrix):
             if not visited[n.y][n.x]:
-                visited[n.y][n.x] = True # 加入隊列前就標記，避免重複排隊
+                visited[n.y][n.x] = True
                 queue.append(n)
     return count
 
@@ -322,19 +315,16 @@ def main():
     if not rect: raise RuntimeError("找不到遊戲框架")
     iframe_topleft = Point(rect['x'], rect['y'])
     print(f"成功鎖定遊戲區域")
-    
     dpr = page.evaluate("window.devicePixelRatio")
-    print(f"DEBUG: 偵測到螢幕縮放倍率為: {dpr}")
     
     print("正在遊玩...")
     while True:
         # Esc 可以退出
         if is_pressed("esc"): break
-        
+
         print("\t正在讀取各格的顏色...")
         game_element.screenshot(path=screenshot_path)
         read_matrix(screenshot_path)
-        # output_matrix(color_matrix)
         
         print("\t連線中...")
         longest_move = find_longest_move(color_matrix)
@@ -346,9 +336,6 @@ def main():
         if move_len <= 6: time.sleep(2.5)
         elif move_len <= 9: time.sleep(4)
         else: time.sleep(8)
-    
-    # print(f"iframe_topleft: {iframe_topleft}")
-    # print(f"pixel_pos(Point(0, 0)): {pixel_pos(Point(0, 0))}")
     
     print("正在關閉網頁...")
     browser.close()
